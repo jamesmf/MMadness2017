@@ -41,7 +41,7 @@ class Team():
         return gs
  
     def getStats(self):
-        py  = pom[pom["Year"] == self.year]
+        return pom.loc[(self.name,self.year)].drop("Conference").as_matrix()[0]
         #py  = py.drop("Seed",1)
         py  = py.drop("Conference",1)
         if len(py[py["Team"] == self.name].as_matrix()) > 0:
@@ -236,7 +236,7 @@ def loadThatModel(folder):
         
 print("begun")       
 epochs = 25
-iterations = 2
+iterations = 2.
 timeSteps = 8
 numPreds = 30
 vecSize = 67
@@ -256,6 +256,7 @@ predictionSeasons = testTourney["Season"].unique()
 pom = pd.read_csv("../data/kenpom.csv")
 pom["Team"] = pom["Team"].apply(lambda x: x.strip())
 pom["Seed"] = pom["Seed"].apply(lambda x: replaceMissingSeed(x))
+pom = pom.set_index(["Team","Year"])
 
 
 IDtoPom = getIDtoPom()
