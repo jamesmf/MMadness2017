@@ -25,85 +25,67 @@ class Team():
         self.name   = self.IDtoName().strip()
         self.games  = self.getGames()
         self.stats  = self.getStats()
-        self.season = self.getSeason()
-        self.seed   = self.getSeed()
+#        self.season = self.getSeason()
+#        self.seed   = self.getSeed()
         
     def IDtoName(self):
         return IDtoPom[self.ID]
         
         
     def getGames(self):
+        gc = [i for i in games.columns]
+        WcolNames = ["Daynum"] + [i for n,i in enumerate(games.columns) if (n >= gc.index("Wfgm")) and (n <= gc.index("Wpf"))]
+        WcolNames = WcolNames + [i for n,i in enumerate(games.columns) if (n >= gc.index("Wins_LT")) and (n <= gc.index("NCSOS Pyth Rank_LT"))]
+        WcolNames = WcolNames + ["Wresult"]
+        LcolNames = ["Daynum"] + [i for n,i in enumerate(games.columns) if (n >= gc.index("Lfgm")) and (n <= gc.index("Lpf"))]
+        LcolNames = LcolNames + [i for n,i in enumerate(games.columns) if (n >= gc.index("Wins")) and (n <= gc.index("NCSOS Pyth Rank"))]
+        LcolNames = LcolNames + ["Lresult"]
         gy  = games[games["Season"] == self.year]
         Ws  = gy[gy["Wteam"] == self.ID]
         Ls  = gy[gy["Lteam"] == self.ID]
-        gs  = pd.concat((Ws,Ls))
-        gs  = gs.sort_values("Daynum")
+        WGames = Ws[WcolNames]
+        LGames = Ls[LcolNames]
+        WG = WGames.as_matrix()
+        LG = LGames.as_matrix()
+        gs  = np.append(WG,LG,axis=0)
+        gs  = gs[gs[:,0].argsort()]
         return gs
  
     def getStats(self):
-        return pom.loc[(self.name,self.year)].drop("Conference").as_matrix()[0]
-        #py  = py.drop("Seed",1)
-        py  = py.drop("Conference",1)
-        if len(py[py["Team"] == self.name].as_matrix()) > 0:
-            py  = py[py["Team"] == self.name].as_matrix()[0]   
-        else:
-            print(self.name, self.year)
-        return py
+        temp = pom.loc[(self.name,self.year)].drop("Conference")
+        seed = temp["Seed"]
+        self.seed = np.max([np.isnan(seed)*20,seed])
+        return temp.as_matrix()
+
         
-    def getSeed(self):
-        py  = pom[pom["Year"] == self.year]
-        if len(py[py["Team"] == self.name].as_matrix()) > 0:
-            py  = py[py["Team"] == self.name].as_matrix()[0]   
-            py  = py[6]
-        else:
-            py  = 16
-        return py        
+#    def getSeed(self):
+#        py  = pom[pom["Year"] == self.year]
+#        if len(py[py["Team"] == self.name].as_matrix()) > 0:
+#            py  = py[py["Team"] == self.name].as_matrix()[0]   
+#            py  = py[6]
+#        else:
+#            py  = 32
+#        return py        
         
     def sampleFromSeason(self,numGames=15):
         out     = []
-        inds    = np.random.choice(len(self.season),numGames,replace=False)
+        inds    = np.random.choice(len(self.games),numGames,replace=False)
         inds    = sorted(inds)
 #        print(inds)
 #        while (len(out) < numGames) and (len(season)>0):
 #            ind     = int(np.floor(len(season)*np.random.rand()))
 #            out.append(season.pop(ind))
-        out = [self.season[i] for i in inds]
+        out = self.games[inds]
         return out
         
-    def getSeason(self):
-        season  = []
-        for index,row in self.games.iterrows():
-            #print row
-            if row["Wteam"] == self.ID:
-                teamVec     = row["Wfgm":"Wpf"]
-                oppVec      = row["Lfgm":"Lpf"]
-                oppID       = row["Lteam"]
-                #print "won!"
-            else:
-                #print "lost"
-                oppVec      = row["Wfgm":"Wpf"]
-                teamVec     = row["Lfgm":"Lpf"]        
-                oppID       = row["Wteam"]
 
-            temp    = pom[pom["Team"] == IDtoPom[oppID]]
-            temp    = temp.drop("Seed",1)
-            temp    = temp.drop("Conference",1)
-            temp    = temp[temp["Year"] == self.year].as_matrix()
-            
-            if len(temp) > 0:
-                temp    = temp[0]
-                oppStats= np.append(temp[1],temp[3:])
-                #py2  = py[py["Team"] == IDtoPom[oppID].strip()] 
-                #oppStats    = py2[4:]
-                fullvec     = np.append(self.stats[1],self.stats[3:])
-                fullvec     = np.append(fullvec,teamVec.as_matrix())
-                fullvec     = np.append(fullvec,oppStats)
-                fullvec     = np.append(fullvec,oppVec)
-                #print fullvec
-                season.append(fullvec)
-                #stop=raw_input()
 
-        return season
+def getPomName(val):
+    if val in IDtoPom:
+        return IDtoPom[val]
+    else:
+        return None
+
 
 def getIDtoPom():
     with open("../fullPomMap.csv",'rb') as f:
@@ -121,7 +103,7 @@ def submissionToTourney(sub):
         a   = []
         sp  = s[0].split("_")
         a.append(sp[0])
-        a.append(136)
+        a.append(136) #Day number
         a.append(int(sp[1]))
         a.append(1)
         a.append(int(sp[2]))
@@ -236,7 +218,7 @@ def loadThatModel(folder):
         
 print("begun")       
 epochs = 25
-iterations = 2.
+iterations = 2
 timeSteps = 8
 numPreds = 30
 vecSize = 67
@@ -244,115 +226,122 @@ noiseFactor = 0.15
 
 modelPath = "../models/"
 phase = "phase1"
-        
+       
+IDtoPom = getIDtoPom()       
+pom = pd.read_csv("../data/kenpom.csv")
+pom["Team"] = pom["Team"].apply(lambda x: x.strip())
+pom["Seed"] = pom["Seed"].apply(lambda x: replaceMissingSeed(x))
+pom = pom.set_index(["Team","Year"])
 np.random.seed(0)      
+
 games = pd.read_csv("../data/"+phase+"/RegularSeasonDetailedResults.csv")
+games["Lteam_name"] = games[["Season","Lteam"]].apply(lambda x: getPomName(x["Lteam"]),axis=1)
+games["Wteam_name"] = games[["Season","Wteam"]].apply(lambda x: getPomName(x["Wteam"]),axis=1)
+games["Wresult"] = games["Wscore"] - games["Lscore"]
+games["Lresult"] = games["Lscore"] - games["Wscore"]
+
+#join on team stats, subset to games where we have data for both teams involved
+games = pd.merge(games,pom,left_on=["Wteam_name","Season"],right_index=True,suffixes=('','_WT'))
+games = pd.merge(games,pom,left_on=["Lteam_name","Season"],right_index=True,suffixes=('','_LT'))
+
+
 trainTourney = pd.read_csv("../data/"+phase+"/TourneyDetailedResults.csv")
 sub = pd.read_csv("../data/"+phase+"/SampleSubmission.csv")
 testTourney = submissionToTourney(sub)
 predictionSeasons = testTourney["Season"].unique()
 
-
-pom = pd.read_csv("../data/kenpom.csv")
-pom["Team"] = pom["Team"].apply(lambda x: x.strip())
-pom["Seed"] = pom["Seed"].apply(lambda x: replaceMissingSeed(x))
-pom = pom.set_index(["Team","Year"])
-
-
-IDtoPom = getIDtoPom()
 allTeams    = {}
 allRMSEs    = []
 
-    
 teamIDs     = []   
-
-if len(sys.argv) == 1:
-    model       = defineModel()
-
-    Xtrain, ytrain, seasonInds = getData(allTeams,trainTourney)
-    print("data done")
-
-    print("getting stats")
-    tempX           = np.reshape(Xtrain,(Xtrain.shape[0]*Xtrain.shape[1],Xtrain.shape[2]))
-    means           = np.ones((timeSteps,tempX.shape[1]))*np.mean(tempX,axis=0)
-    stds            = np.ones((timeSteps,tempX.shape[1]))*np.std(tempX,axis=0)
-
-    Xtrain -= means
-    Xtrain /= stds+np.ones((stds.shape))*0.000001       
-    print("fitting")    
-    
-    for predSeason in predictionSeasons:
-        #each season we're predicting for we use the prior 2 tournaments as CV
-        cvSeasons = [ int(predSeason)-1, int(predSeason)-2]
-        holdOutSeasons = cvSeasons+[int(predSeason)]
-        #get a mask for the training folds, the CV fold, and the predictions
-        cvFoldInds = seasonInds["year"].apply(lambda x: x in cvSeasons)
-        cvFoldInds = cvFoldInds[cvFoldInds==True].index.tolist()
-        predFoldInds = seasonInds["year"].apply(lambda x: x == predSeason)
-        predFoldInds = predFoldInds[predFoldInds==True].index.tolist()
-        trainFoldInds = seasonInds["year"].apply(lambda x: not x in holdOutSeasons)
-        trainFoldInds = trainFoldInds[trainFoldInds==True].index.tolist()
-        
-        noise = np.random.rand(Xtrain.shape[0],Xtrain.shape[1],Xtrain.shape[2])*noiseFactor
-        
-        
-        Xtraintemp = Xtrain[trainFoldInds]+noise[trainFoldInds]
-        ytraintemp = ytrain[trainFoldInds]
-        Xcvtemp = Xtrain[cvFoldInds]+noise[cvFoldInds]
-        ycvtemp = ytrain[cvFoldInds]
-        Xtesttemp = Xtrain[predFoldInds]
-        ytesttemp = ytrain[predFoldInds]
-        
-        callbacks = [
-            EarlyStopping(monitor='val_loss', patience=5, verbose=0),
-            ModelCheckpoint(modelPath+'cv_'+predSeason+'_rnn', 
-                            monitor='val_loss', save_best_only=True, verbose=1),
-        ]        
-        
-        model.fit(Xtraintemp,ytraintemp,nb_epoch=epochs,validation_data=(Xcvtemp, ycvtemp),callbacks=callbacks)
-
-#    jsonstring  = model.to_json()
-#    with open("../model/mmRNN.json",'wb') as f:
-#        f.write(jsonstring)
-#    model.save_weights("../model/mmRNN.h5",overwrite=True)
-
-else:
-    model   = loadThatModel("../model/mmRNN")
-
-
-
-output  = np.zeros((tourney.shape[0],numPreds))
-
-Xtest,dummy     = getData(allTeams,tourney,predict=True)
-Xtest           -=means
-Xtest           /=stds+np.ones((stds.shape))*0.0000001
-
-print(tourney.shape,Xtest.shape)
-preds   = model.predict(Xtest)
-print(preds.shape)
-preds   = np.reshape(preds,output.shape)
-print(preds.shape)
-output  = preds
-
-#np.save("../output.nd",output)    
-#np.save("../Xtest",Xtest)
-#np.save("../means",means)
-#np.save()
-
-    
-means   = np.mean(output,axis=1)
-stds    = np.std(output,axis=1)
-
-uncert  = 3
-towrite = []
-for game in range(0,means.shape[0]):
-    ID      = sub.loc[game]["Id"]
-    print(ID, means[game],stds[game])
-    st      = stds[game]*uncert + 0.0000001
-    prob    = norm.cdf(-0.01,loc=means[game],scale=st)
-    towrite.append([ID,prob])
-
-with open("../predictions3.csv",'wb') as f:
-    wr  = csv.writer(f)
-    for row in towrite:
-        wr.writerow(row)
+#
+#if len(sys.argv) == 1:
+#    model       = defineModel()
+#
+#    Xtrain, ytrain, seasonInds = getData(allTeams,trainTourney)
+#    print("data done")
+#
+#    print("getting stats")
+#    tempX           = np.reshape(Xtrain,(Xtrain.shape[0]*Xtrain.shape[1],Xtrain.shape[2]))
+#    means           = np.ones((timeSteps,tempX.shape[1]))*np.mean(tempX,axis=0)
+#    stds            = np.ones((timeSteps,tempX.shape[1]))*np.std(tempX,axis=0)
+#
+#    Xtrain -= means
+#    Xtrain /= stds+np.ones((stds.shape))*0.000001       
+#    print("fitting")    
+#    
+#    for predSeason in predictionSeasons:
+#        #each season we're predicting for we use the prior 2 tournaments as CV
+#        cvSeasons = [ int(predSeason)-1, int(predSeason)-2]
+#        holdOutSeasons = cvSeasons+[int(predSeason)]
+#        #get a mask for the training folds, the CV fold, and the predictions
+#        cvFoldInds = seasonInds["year"].apply(lambda x: x in cvSeasons)
+#        cvFoldInds = cvFoldInds[cvFoldInds==True].index.tolist()
+#        predFoldInds = seasonInds["year"].apply(lambda x: x == predSeason)
+#        predFoldInds = predFoldInds[predFoldInds==True].index.tolist()
+#        trainFoldInds = seasonInds["year"].apply(lambda x: not x in holdOutSeasons)
+#        trainFoldInds = trainFoldInds[trainFoldInds==True].index.tolist()
+#        
+#        noise = np.random.rand(Xtrain.shape[0],Xtrain.shape[1],Xtrain.shape[2])*noiseFactor
+#        
+#        
+#        Xtraintemp = Xtrain[trainFoldInds]+noise[trainFoldInds]
+#        ytraintemp = ytrain[trainFoldInds]
+#        Xcvtemp = Xtrain[cvFoldInds]+noise[cvFoldInds]
+#        ycvtemp = ytrain[cvFoldInds]
+#        Xtesttemp = Xtrain[predFoldInds]
+#        ytesttemp = ytrain[predFoldInds]
+#        
+#        callbacks = [
+#            EarlyStopping(monitor='val_loss', patience=5, verbose=0),
+#            ModelCheckpoint(modelPath+'cv_'+predSeason+'_rnn', 
+#                            monitor='val_loss', save_best_only=True, verbose=1),
+#        ]        
+#        
+#        model.fit(Xtraintemp,ytraintemp,nb_epoch=epochs,validation_data=(Xcvtemp, ycvtemp),callbacks=callbacks)
+#
+##    jsonstring  = model.to_json()
+##    with open("../model/mmRNN.json",'wb') as f:
+##        f.write(jsonstring)
+##    model.save_weights("../model/mmRNN.h5",overwrite=True)
+#
+#else:
+#    model   = loadThatModel("../model/mmRNN")
+#
+#
+#
+#output  = np.zeros((tourney.shape[0],numPreds))
+#
+#Xtest,dummy     = getData(allTeams,tourney,predict=True)
+#Xtest           -=means
+#Xtest           /=stds+np.ones((stds.shape))*0.0000001
+#
+#print(tourney.shape,Xtest.shape)
+#preds   = model.predict(Xtest)
+#print(preds.shape)
+#preds   = np.reshape(preds,output.shape)
+#print(preds.shape)
+#output  = preds
+#
+##np.save("../output.nd",output)    
+##np.save("../Xtest",Xtest)
+##np.save("../means",means)
+##np.save()
+#
+#    
+#means   = np.mean(output,axis=1)
+#stds    = np.std(output,axis=1)
+#
+#uncert  = 3
+#towrite = []
+#for game in range(0,means.shape[0]):
+#    ID      = sub.loc[game]["Id"]
+#    print(ID, means[game],stds[game])
+#    st      = stds[game]*uncert + 0.0000001
+#    prob    = norm.cdf(-0.01,loc=means[game],scale=st)
+#    towrite.append([ID,prob])
+#
+#with open("../predictions3.csv",'wb') as f:
+#    wr  = csv.writer(f)
+#    for row in towrite:
+#        wr.writerow(row)
