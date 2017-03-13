@@ -425,7 +425,7 @@ if len(sys.argv) == 1:
         if predsForSubmission is None:
             predsForSubmission = groupedPreds
         else:
-            predsForSubmission = predsForSubmission.append(predsForSubmission)
+            predsForSubmission = predsForSubmission.append(groupedPreds)
 
 else:
     model   = loadThatModel("../model/mmRNN")
